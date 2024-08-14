@@ -3,9 +3,25 @@ from collections import namedtuple
 
 
 Options = namedtuple(
-    "Options", ["name", "tolerance", "maxiter", "save_pvd", "save_hdf5", "outdir"]
+    "Options", ["output"]
 )
 Options.__doc__ = """Options
+
+PARAMETERS
+----------
+output: Output instance
+   output data
 """
 
-_defaults = []
+
+Output = namedtuple(
+    "Output", ["fields"]
+)
+Output.__doc__ = """Output Options
+
+PARAMETERS
+----------
+fields: sequence
+   comma-separated list of output fields to write; fields will depend on
+   process being run
+"""
