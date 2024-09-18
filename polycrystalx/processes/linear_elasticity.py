@@ -12,10 +12,8 @@ from dolfinx.fem.petsc import LinearProblem
 import ufl
 from mpi4py import MPI
 
-from ..loaders import mesh
-from ..loaders import material
-from ..loaders import polycrystal
-from ..loaders import deformation
+from .. import inputs
+from ..loaders import mesh, material, polycrystal, deformation, options
 from ..forms.common import sigs_3x3, grain_volume, grain_integral
 from ..forms.linear_elasticity import (
     LinearElasticity as LinearElasticityProblem
@@ -93,48 +91,84 @@ class LinearElasticity:
 
     def postprocess(self, uh, ldr):
         """Compute strains and stresses and write output"""
-        # Write the XDMF File.
+
+        # First, write the XDMF File.
 
         uh.name = "displacement"
         ldr.cell_tags.name = "grain-ids"
 
-        strain_form = ufl.sym(ufl.grad(uh))
-        strain_expr = fem.Expression(
-            strain_form, ldr.T.element.interpolation_points()
-        )
-        strain = fem.Function(ldr.T, name="strain")
-        strain.interpolate(strain_expr)
-
-        stress_form = sigs_3x3(uh, ldr.stiffness_fld, ldr.orientation_fld)
-        stress_expr = fem.Expression(
-            stress_form, ldr.T.element.interpolation_points()
-        )
-        stress = fem.Function(ldr.T, name="stress")
-        stress.interpolate(stress_expr)
-
+        strain, stress = 2 * (None,)
         with io.XDMFFile(ldr.mesh.comm, "output.xdmf", "w") as file:
-            file.write_mesh(ldr.mesh)
-            file.write_meshtags(ldr.cell_tags, ldr.mesh.geometry)
-            file.write_function(uh)
-            file.write_function(strain)
-            file.write_function(stress)
+            if ldr.options.output.write_mesh:
+                file.write_mesh(ldr.mesh)
+            if ldr.options.output.write_grain_ids:
+                file.write_meshtags(ldr.cell_tags, ldr.mesh.geometry)
+            if ldr.options.output.write_displacement:
+                file.write_function(uh)
+            if ldr.options.output.write_strain:
+                strain_form = ufl.sym(ufl.grad(uh))
+                strain_expr = fem.Expression(
+                    strain_form, ldr.T.element.interpolation_points()
+                )
+                strain = fem.Function(ldr.T, name="strain")
+                strain.interpolate(strain_expr)
+                file.write_function(strain)
+            if ldr.options.output.write_stress:
+                stress_form = sigs_3x3(
+                    uh, ldr.stiffness_fld, ldr.orientation_fld
+                )
+                stress_expr = fem.Expression(
+                    stress_form, ldr.T.element.interpolation_points()
+                )
+                stress = fem.Function(ldr.T, name="stress")
+                stress.interpolate(stress_expr)
+                file.write_function(stress)
 
-        # Compute grain volumes.
+        self.write_grain_averages(strain, stress)
+
+        if self.mpirank == 0:
+            self.write_xdmf()
+
+    def write_grain_averages(self, strain, stress):
+        """Write grain-averaged volumes, strain and stress"""
+        ldr = self.loader
 
         print("finding grain volumes")
-        with Timer() as t:
-            gv_form, indic = grain_volume(ldr.mesh)
-            g_volumes = grain_volumes(
-                ldr.mesh.comm, gv_form, indic, ldr.grain_cells
-            )
-            elapsed = t.elapsed()
+        gv_form, indic = grain_volume(ldr.mesh)
+        g_volumes = grain_volumes(
+            ldr.mesh.comm, gv_form, indic, ldr.grain_cells
+        )
         if self.mpirank == 0:
             print(f"total volume: {np.sum(g_volumes)}", flush=True)
-            print(f"time for volume calculation: {elapsed}")
 
-        # Compute grain integrals.
+        num_grains = len(g_volumes)
+        kwargs  = dict()
+        if strain is not None:
+            eps_strain = self.grain_average_tensor(num_grains, strain)
+            kwargs["strain"] = eps_strain
+        if stress is not None:
+            eps_stress = self.grain_average_tensor(num_grains, stress)
+            kwargs["stress"] = eps_stress
 
-        eps_int = np.zeros((num_grains := len(g_volumes), 6))
+        if self.mpirank == 0:
+            eps_avg = np.zeros((num_grains, 6))
+            sig_avg = np.zeros((num_grains, 6))
+            nz = g_volumes > 0.
+            nnz = np.count_nonzero(g_volumes > 0)
+            if strain is not None:
+                eps_avg[nz] = eps_strain[nz]/g_volumes[nz].reshape(nnz, 1)
+            if stress is not None:
+                sig_avg[nz] = eps_stress[nz]/g_volumes[nz].reshape(nnz, 1)
+            np.savez(
+                "grain-averages.npz", volume=g_volumes,
+                strain=eps_avg, stress=sig_avg
+            )
+
+    def grain_average_tensor(self, num_grains, tensor):
+        """Grain averaged data for a tensor"""
+        ldr = self.loader
+
+        eps_int = np.zeros((num_grains, 6))
 
         V = fem.functionspace(ldr.mesh, ("DG", 0))
         gi_form, indicator, func = grain_integral(ldr.mesh, V)
@@ -143,67 +177,57 @@ class LinearElasticity:
         allcells = np.arange(indmap.size_local).astype(np.int32)
         eps_fun = fem.Function(V)
 
-        with Timer() as t:
-            eps_expr = fem.Expression(
-                strain[0, 0], V.element.interpolation_points()
-            )
-            eps_fun.interpolate(eps_expr, allcells)
-            eps_int[:, 0] = grain_integrals(
-                ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
-                eps_fun
-            )
-            eps_expr = fem.Expression(
-                strain[1, 1], V.element.interpolation_points()
-            )
-            eps_fun.interpolate(eps_expr, allcells)
-            eps_int[:, 1] = grain_integrals(
-                ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
-                eps_fun
-            )
-            eps_expr = fem.Expression(
-                strain[2, 2], V.element.interpolation_points()
-            )
-            eps_fun.interpolate(eps_expr, allcells)
-            eps_int[:, 2] = grain_integrals(
-                ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
-                eps_fun
-            )
-            eps_expr = fem.Expression(
-                strain[1, 2], V.element.interpolation_points()
-            )
-            eps_fun.interpolate(eps_expr, allcells)
-            eps_int[:, 3] = grain_integrals(
-                ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
-                eps_fun
-            )
-            eps_expr = fem.Expression(
-                strain[0, 2], V.element.interpolation_points()
-            )
-            eps_fun.interpolate(eps_expr, allcells)
-            eps_int[:, 4] = grain_integrals(
-                ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
-                eps_fun
-            )
-            eps_expr = fem.Expression(
-                strain[0, 1], V.element.interpolation_points()
-            )
-            eps_fun.interpolate(eps_expr, allcells)
-            eps_int[:, 5] = grain_integrals(
-                ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
-                eps_fun
-            )
-            elapsed = t.elapsed()
-        if self.mpirank == 0:
-            print(f"time for grain integrals calculation: {elapsed}")
+        eps_expr = fem.Expression(
+            tensor[0, 0], V.element.interpolation_points()
+        )
+        eps_fun.interpolate(eps_expr, allcells)
+        eps_int[:, 0] = grain_integrals(
+            ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
+            eps_fun
+        )
+        eps_expr = fem.Expression(
+            tensor[1, 1], V.element.interpolation_points()
+        )
+        eps_fun.interpolate(eps_expr, allcells)
+        eps_int[:, 1] = grain_integrals(
+            ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
+            eps_fun
+        )
+        eps_expr = fem.Expression(
+            tensor[2, 2], V.element.interpolation_points()
+        )
+        eps_fun.interpolate(eps_expr, allcells)
+        eps_int[:, 2] = grain_integrals(
+            ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
+            eps_fun
+        )
+        eps_expr = fem.Expression(
+            tensor[1, 2], V.element.interpolation_points()
+        )
+        eps_fun.interpolate(eps_expr, allcells)
+        eps_int[:, 3] = grain_integrals(
+            ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
+            eps_fun
+        )
+        eps_expr = fem.Expression(
+            tensor[0, 2], V.element.interpolation_points()
+        )
+        eps_fun.interpolate(eps_expr, allcells)
+        eps_int[:, 4] = grain_integrals(
+            ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
+            eps_fun
+        )
+        eps_expr = fem.Expression(
+            tensor[0, 1], V.element.interpolation_points()
+        )
+        eps_fun.interpolate(eps_expr, allcells)
+        eps_int[:, 5] = grain_integrals(
+            ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
+            eps_fun
+        )
 
-        if self.mpirank == 0:
-            eps_avg = np.zeros_like(eps_int)
-            nz = g_volumes > 0.
-            nnz = np.count_nonzero(g_volumes > 0)
-            eps_avg[nz] = eps_int[nz]/g_volumes[nz].reshape(nnz, 1)
-            np.savez("grain-averages.npz", volume=g_volumes, strain=eps_avg)
-            #
-            self.write_xdmf()
+        return eps_int
+
 
     def write_xdmf(self, output="output.xdmf", paraview="paraview.xdmf"):
         """This puts all the data into the same grid
@@ -301,6 +325,12 @@ class _Loader:
         self.plastic_distortion = self.deformation_data.plastic_distortion(
             self.T
         )
+
+        # Options
+        if self.input_module.options is None:
+            self.options = inputs.options.LinearElasticity()
+        else:
+            self.options = self.input_module.options
 
     @property
     def mesh(self):
