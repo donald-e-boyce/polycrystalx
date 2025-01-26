@@ -139,7 +139,7 @@ class LinearElasticity:
 
         with io.XDMFFile(ldr.mesh.comm, "output.xdmf", "w") as file:
             # file.write_mesh(ldr.mesh)
-            # file.write_meshtags(ldr.cell_tags, ldr.mesh.geometry)
+            file.write_meshtags(ldr.cell_tags, ldr.mesh.geometry)
             # file.write_function(uh)
             # file.write_function(strain)
             # file.write_function(stress)
