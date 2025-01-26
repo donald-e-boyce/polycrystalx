@@ -112,13 +112,6 @@ class LinearElasticity:
         stress = fem.Function(ldr.T, name="stress")
         stress.interpolate(stress_expr)
 
-        with io.XDMFFile(ldr.mesh.comm, "output.xdmf", "w") as file:
-            file.write_mesh(ldr.mesh)
-            file.write_meshtags(ldr.cell_tags, ldr.mesh.geometry)
-            file.write_function(uh)
-            file.write_function(strain)
-            file.write_function(stress)
-
         # Compute grain volumes.
 
         print("finding grain volumes")
@@ -136,6 +129,7 @@ class LinearElasticity:
 
         eps_int = np.zeros((num_grains := len(g_volumes), 6))
 
+
         V = fem.functionspace(ldr.mesh, ("DG", 0))
         gi_form, indicator, func = grain_integral(ldr.mesh, V)
 
@@ -143,7 +137,14 @@ class LinearElasticity:
         allcells = np.arange(indmap.size_local).astype(np.int32)
         eps_fun = fem.Function(V)
 
-        with Timer() as t:
+        with io.XDMFFile(ldr.mesh.comm, "output.xdmf", "w") as file:
+            # file.write_mesh(ldr.mesh)
+            # file.write_meshtags(ldr.cell_tags, ldr.mesh.geometry)
+            # file.write_function(uh)
+            # file.write_function(strain)
+            # file.write_function(stress)
+
+            # Strain 0, 0
             eps_expr = fem.Expression(
                 strain[0, 0], V.element.interpolation_points()
             )
@@ -152,6 +153,11 @@ class LinearElasticity:
                 ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
                 eps_fun
             )
+            eps_fun.name = "strain-11"
+            file.write_function(eps_fun)
+
+            # Strain 1, 1
+
             eps_expr = fem.Expression(
                 strain[1, 1], V.element.interpolation_points()
             )
@@ -160,6 +166,10 @@ class LinearElasticity:
                 ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
                 eps_fun
             )
+            eps_fun.name = "strain-22"
+            file.write_function(eps_fun)
+
+            # Strain 2, 2
             eps_expr = fem.Expression(
                 strain[2, 2], V.element.interpolation_points()
             )
@@ -168,6 +178,10 @@ class LinearElasticity:
                 ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
                 eps_fun
             )
+            eps_fun.name = "strain-33"
+            file.write_function(eps_fun)
+
+            # Strain 1, 2
             eps_expr = fem.Expression(
                 strain[1, 2], V.element.interpolation_points()
             )
@@ -176,6 +190,10 @@ class LinearElasticity:
                 ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
                 eps_fun
             )
+            eps_fun.name = "strain-23"
+            file.write_function(eps_fun)
+
+            # Strain 0, 2
             eps_expr = fem.Expression(
                 strain[0, 2], V.element.interpolation_points()
             )
@@ -184,6 +202,10 @@ class LinearElasticity:
                 ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
                 eps_fun
             )
+            eps_fun.name = "strain-13"
+            file.write_function(eps_fun)
+
+            # Strain 0, 1
             eps_expr = fem.Expression(
                 strain[0, 1], V.element.interpolation_points()
             )
@@ -192,9 +214,18 @@ class LinearElasticity:
                 ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
                 eps_fun
             )
-            elapsed = t.elapsed()
-        if self.mpirank == 0:
-            print(f"time for grain integrals calculation: {elapsed}")
+            eps_fun.name = "strain-12"
+            file.write_function(eps_fun)
+
+            # Finally write meshtag values.
+            #print("values: ", ldr.cell_tags.values[:10] ,
+            #      ldr.cell_tags.values[-10:])
+            #print("len(eps_array): ", len(eps_fun.x.array))
+            #print("len(mtag-values): ", len(ldr.cell_tags.values))
+            #eps_fun.x.array[:] = ldr.cell_tags.values
+            #eps_fun.name = "grain-ids"
+            #file.write_function(eps_fun)
+
 
         if self.mpirank == 0:
             eps_avg = np.zeros_like(eps_int)
@@ -203,7 +234,7 @@ class LinearElasticity:
             eps_avg[nz] = eps_int[nz]/g_volumes[nz].reshape(nnz, 1)
             np.savez("grain-averages.npz", volume=g_volumes, strain=eps_avg)
             #
-            self.write_xdmf()
+            # debug: self.write_xdmf()
 
     def write_xdmf(self, output="output.xdmf", paraview="paraview.xdmf"):
         """This puts all the data into the same grid
