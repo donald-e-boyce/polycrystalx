@@ -258,6 +258,7 @@ class _Loader:
         self.V = self.problem.V
         self.T = self.problem.T
         self.T6 = self.problem.T6
+        self.V_temp = fem.functionspace(self.mesh, ("DG", 0))
 
         # Microstructure Data
         self.polycrystal_data = polycrystal.Polycrystal(
@@ -276,7 +277,6 @@ class _Loader:
         self.orientation_fld = self.polycrystal_data.orientation_field(
             self.T, self.grain_cells
         )
-        self._stiffness_fld = self._make_stiffness_fld()
 
         # Deformation Data
         self.deformation_data = deformation.LinearElasticity(
@@ -284,12 +284,12 @@ class _Loader:
         )
         self.force_density = self.deformation_data.force_density(self.V)
 
-        self.thermal_expansion = self.deformation_data.thermal_expansion(
-            self.T
-        )
-        self.plastic_distortion = self.deformation_data.plastic_distortion(
-            self.T
-        )
+        self.thermal_expansion = self.deformation_data.thermal_expansion(self.T)
+        self.plastic_distortion = self.deformation_data.plastic_distortion(self.T)
+        self.has_temperature = self.deformation_data.has_temperature
+        self.temperature = self.deformation_data.temperature(self.V_temp)
+
+        self._stiffness_fld = self._make_stiffness_fld()
 
     @property
     def mesh(self):
@@ -306,13 +306,36 @@ class _Loader:
             phase = int(ms.phase(np.array([gi])))
             matl = self.material_data.materials[phase]
             cells = self.grain_cells[gi]
-            stf = matl.stiffness
-            stf_fun = lambda x: self._stiffness(stf, x)
-            stf_fld.interpolate(stf_fun, cells)
+
+            # Check for temperature dependence.
+            if self.has_temperature:
+                self._stiffness_at_temp(stf_fld.x.array, cells, matl)
+            else:
+                stf_fld.interpolate(lambda x: self._stiffness(matl.stiffness, x), cells)
+
+        stf_fld.x.scatter_forward()
         return stf_fld
 
     def _stiffness(self, stf, x):
         return np.tile(stf.reshape(36,1), x.shape[1])
+
+    def _stiffness_at_temp(self, xa, cells, matl):
+        """Stiffness evaluated for a defined temperature field
+
+        xa: array(n * d)
+            array of interpolation point values
+        cells: list
+            cell numbers
+        matl: material instance
+            elastic material
+        """
+        n, d = len(cells), 36
+        temp_a = self.temperature.x.array
+        for i in range(n):
+            ci = cells[i]
+            dci = d * ci
+            xa[dci:(dci + d)] = matl.stiffness(temp_a[i]).flatten()
+        return
 
     @property
     def boundary_dict(self):

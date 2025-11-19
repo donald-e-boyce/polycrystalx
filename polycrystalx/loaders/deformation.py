@@ -165,6 +165,26 @@ class LinearElasticity(DefmLoader):
         if self.defm_input.thermal_expansion is not None:
             return FunctionLoader(self.defm_input.thermal_expansion).load(T)
 
+    @property
+    def has_temperature(self):
+        return self.defm_input.temperature is not None
+
+    def temperature(self, V):
+        """Return temperature function
+
+        Parameters
+        ----------
+        V: dolfinx FunctionSpace
+           scalar function space for temperature
+
+        Returns
+        -------
+        dolfinx Function
+           temperature function as specified
+        """
+        if self.has_temperature:
+            return FunctionLoader(self.defm_input.temperature).load(V)
+
 
 class HeatTransfer(DefmLoader):
     """Loader for heat transfer inputs"""
