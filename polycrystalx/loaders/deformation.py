@@ -183,7 +183,9 @@ class LinearElasticity(DefmLoader):
            temperature function as specified
         """
         if self.has_temperature:
-            return FunctionLoader(self.defm_input.temperature).load(V)
+            return (
+                FunctionLoader(self.defm_input.temperature).load(V, name="temperature")
+            )
 
 
 class HeatTransfer(DefmLoader):

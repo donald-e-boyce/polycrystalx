@@ -129,7 +129,8 @@ class LinearElasticity:
             if texp is not None:
                 texp.name = "thermal_expansion"
                 file.write_function(texp)
-
+            if ldr.has_temperature:
+                file.write_function(ldr.temperature)
         # Compute grain volumes.
 
         print("finding grain volumes")
@@ -201,45 +202,34 @@ class LinearElasticity:
         ATTR = "Attribute"
         NAME = "Name"
 
-        # Start with displacement, which also includes meshtags.
-
         tree = ET.parse(output)
         root = tree.getroot()
         domain = root[0]
         meshgrid = domain[0]
 
-        mtags = domain[1].find(ATTR)
-        mtags.attrib[NAME] = "grain ID"
-        meshgrid.append(mtags)
+        # fenicsx writes each function in its own Grid element (inside another Grid
+        # element. This section writes all the functions as `Attribute`s on the mesh
+        # Grid element, then deletes all the other `Grid`s.
 
-        disp = domain[2][0].find(ATTR)
-        disp.attrib[NAME] = "displacement"
-        meshgrid.append(disp)
+        for elem in domain:
+            if elem.attrib['Name'] == 'mesh':
+                continue
 
-        strn = domain[3][0].find(ATTR)
-        strn.attrib[NAME] = "strain"
-        meshgrid.append(strn)
+            attr_list = list(elem.iter(ATTR))
+            natt = len(attr_list)
+            if natt != 1:
+                raise RuntimeError(f"expecting exact one Attribute; found {natt}")
+            attr = attr_list[0]
+            meshgrid.append(attr)
 
-        stress = domain[4][0].find(ATTR)
-        stress.attrib[NAME] = "stress"
-        meshgrid.append(stress)
-
-        try:
-            texp = domain[5][0].find(ATTR)
-            texp.attrib[NAME] = "thermal_expansion"
-            meshgrid.append(texp)
-            domain.remove(domain[5])
-        except:
-            pass
-
-        domain.remove(domain[4])
-        domain.remove(domain[3])
-        domain.remove(domain[2])
-        domain.remove(domain[1])
+        n = len(list(domain))
+        for i in range(n - 1, 0, -1):
+            if domain is not meshgrid:
+                domain.remove(domain[i])
 
         # Write the modified tree.
 
-        tree.write(paraview)
+        tree.write(paraview, xml_declaration=True)
 
 
 class _Loader:
