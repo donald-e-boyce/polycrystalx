@@ -55,9 +55,10 @@ TractionBC = BoundaryCondition
 
 
 LinearElasticity = namedtuple(
-    "LinearElasticity",
-    ["name", "force_density", "plastic_distortion", "temperature", "thermal_expansion",
-     "displacement_bcs", "traction_bcs"],
+    "LinearElasticity", [
+        "name", "force_density", "plastic_distortion", "temperature",
+        "reference_temperature", "displacement_bcs", "traction_bcs"
+    ],
     defaults=[None, None, None, None, [], []]
 )
 LinearElasticity.__doc__ = """Deformation input for Elasticity
@@ -70,10 +71,8 @@ force_density: inputs.function.Function
     force density function specification
 plastic_distortion: inputs.function.Function
     plastic distortion function specification
-thermal_expansion: inputs.function.Function
-    temperature function
-thermal_expansion: inputs.function.Function
-    thermal expansion tensor function
+reference_temperature: float or None
+    reference temperature for thermal expansion
 displacement_bcs: list
     list of DisplacementBC instances
 traction_bcs: list of inputs.deformation.TractionBC

@@ -274,7 +274,6 @@ class _Loader:
         )
         self.force_density = self.deformation_data.force_density(self.V)
 
-        self.thermal_expansion = self.deformation_data.thermal_expansion(self.T)
         self.plastic_distortion = self.deformation_data.plastic_distortion(self.T)
         self.has_temperature = self.deformation_data.has_temperature
         self.temperature = self.deformation_data.temperature(self.V_temp)
@@ -295,6 +294,7 @@ class _Loader:
         for gi in range(ms.num_grains):
             phase = int(ms.phase(np.array([gi])))
             matl = self.material_data.materials[phase]
+            print(matl)
             cells = self.grain_cells[gi]
 
             # Check for temperature dependence.
@@ -313,7 +313,7 @@ class _Loader:
         """Stiffness evaluated for a defined temperature field
 
         xa: array(n * d)
-            array of interpolation point values
+            array of temperature values at interpolation points
         cells: list
             cell numbers
         matl: material instance
@@ -326,6 +326,21 @@ class _Loader:
             dci = d * ci
             xa[dci:(dci + d)] = matl.stiffness(temp_a[i]).flatten()
         return
+
+    @property
+    def thermal_expansion(self):
+        texp = self.deformation_data.thermal_expansion(self.T)
+        ms = self.polycrystal_data.polycrystal
+        reftemp = self.deformation_data.reference_temperature
+        for gi in range(ms.num_grains):
+            phase = int(ms.phase(np.array([gi])))
+            matl = self.material_data.materials[phase]
+            cells = self.grain_cells[gi]
+            cte = matl.cte(reftemp).flatten()
+            texp.x.array[:] = (
+                np.outer((self.temperature.x.array[:] - reftemp), cte).flatten()
+            )
+        return texp
 
     @property
     def boundary_dict(self):

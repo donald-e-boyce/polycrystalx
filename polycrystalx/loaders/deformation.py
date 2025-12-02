@@ -149,6 +149,13 @@ class LinearElasticity(DefmLoader):
         if self.defm_input.plastic_distortion is not None:
             return FunctionLoader(self.defm_input.plastic_distortion).load(T)
 
+    def has_thermal_expansion(self):
+        return self.reference_temperature is not None
+
+    @property
+    def reference_temperature(self):
+        return self.defm_input.reference_temperature
+
     def thermal_expansion(self, T):
         """Return thermal expansion function
 
@@ -162,8 +169,9 @@ class LinearElasticity(DefmLoader):
         dolfinx Function
            thermal expansion function as specified
         """
-        if self.defm_input.thermal_expansion is not None:
-            return FunctionLoader(self.defm_input.thermal_expansion).load(T)
+        texp = fem.Function(T)
+        if self.has_thermal_expansion:
+            return texp
 
     @property
     def has_temperature(self):
