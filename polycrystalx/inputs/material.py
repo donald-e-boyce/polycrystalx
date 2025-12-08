@@ -7,7 +7,7 @@ from collections import namedtuple
 
 
 MaterialList = namedtuple(
-    "MaterialLisst", ["name", "materials"]
+    "MaterialList", ["name", "materials"]
 )
 MaterialList.__doc__ = """List of Materials
 

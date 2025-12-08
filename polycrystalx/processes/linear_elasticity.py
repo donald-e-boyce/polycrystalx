@@ -294,11 +294,14 @@ class _Loader:
         for gi in range(ms.num_grains):
             phase = int(ms.phase(np.array([gi])))
             matl = self.material_data.materials[phase]
-            print(matl)
             cells = self.grain_cells[gi]
 
-            # Check for temperature dependence.
-            if self.has_temperature:
+            # Check for temperature dependence of stiffness.
+            try:
+                is_td = matl.temperature_dependent
+            except AttributeError:
+                is_td = False
+            if is_td:
                 self._stiffness_at_temp(stf_fld.x.array, cells, matl)
             else:
                 stf_fld.interpolate(lambda x: self._stiffness(matl.stiffness, x), cells)
@@ -309,11 +312,11 @@ class _Loader:
     def _stiffness(self, stf, x):
         return np.tile(stf.reshape(36,1), x.shape[1])
 
-    def _stiffness_at_temp(self, xa, cells, matl):
+    def _stiffness_at_temp(self, stiff_a, cells, matl):
         """Stiffness evaluated for a defined temperature field
 
-        xa: array(n * d)
-            array of temperature values at interpolation points
+        stiff_a: array(n * d)
+            array of stiffness values at interpolation points
         cells: list
             cell numbers
         matl: material instance
@@ -324,22 +327,29 @@ class _Loader:
         for i in range(n):
             ci = cells[i]
             dci = d * ci
-            xa[dci:(dci + d)] = matl.stiffness(temp_a[i]).flatten()
+            stiff_a[dci:(dci + d)] = matl.stiffness(temp_a[i]).flatten()
         return
 
     @property
     def thermal_expansion(self):
+        reftemp = self.deformation_data.reference_temperature
+        if reftemp is None:
+            return
         texp = self.deformation_data.thermal_expansion(self.T)
         ms = self.polycrystal_data.polycrystal
-        reftemp = self.deformation_data.reference_temperature
         for gi in range(ms.num_grains):
             phase = int(ms.phase(np.array([gi])))
             matl = self.material_data.materials[phase]
             cells = self.grain_cells[gi]
-            cte = matl.cte(reftemp).flatten()
-            texp.x.array[:] = (
-                np.outer((self.temperature.x.array[:] - reftemp), cte).flatten()
-            )
+            cte = matl.cte(reftemp)
+
+            n, d = len(cells), 9
+            tdiff = self.temperature.x.array[cells] - reftemp
+            for i in range(n):
+                ci = cells[i]
+                dci = d * ci
+                texp.x.array[dci:(dci + d)] = (cte * tdiff[ci]).flatten()
+
         return texp
 
     @property
