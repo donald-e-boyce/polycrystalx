@@ -72,6 +72,7 @@ class LinearElasticity:
         print("setting up linear problem", flush=True)
         problem = LinearProblem(
             a, L, bcs=mybcs,
+            petsc_options_prefix="linear_elasticity",
             petsc_options=default_petsc_options
         )
         # petsc_options={"ksp_type": "preonly", "pc_type": "lu"}
@@ -102,7 +103,7 @@ class LinearElasticity:
 
         strain_form = ufl.sym(ufl.grad(uh))
         strain_expr = fem.Expression(
-            strain_form, ldr.T.element.interpolation_points()
+            strain_form, ldr.T.element.interpolation_points
         )
         strain = fem.Function(ldr.T, name="strain")
         strain.interpolate(strain_expr)
@@ -115,7 +116,7 @@ class LinearElasticity:
                 texp, ldr.stiffness_fld, ldr.orientation_fld
             )
         stress_expr = fem.Expression(
-            stress_form, ldr.T.element.interpolation_points()
+            stress_form, ldr.T.element.interpolation_points
         )
         stress = fem.Function(ldr.T, name="stress")
         stress.interpolate(stress_expr)
@@ -162,7 +163,7 @@ class LinearElasticity:
             for i in range(6):
                 j0, j1 = indmap[i]
                 eps_expr = fem.Expression(
-                    strain[j0, j1], V.element.interpolation_points()
+                    strain[j0, j1], V.element.interpolation_points
                 )
                 eps_fun.interpolate(eps_expr, allcells)
                 eps_int[:, i] = grain_integrals(
