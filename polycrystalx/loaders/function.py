@@ -55,7 +55,7 @@ class FunctionLoader:
     def _load_interpolate(self, f):
         if self.userinput.function is None:
             msg = '"function" key not specified for  function'
-            raise RuntimeError()
+            raise RuntimeError(msg)
         f_interp = self.userinput.function
         f.interpolate(f_interp)
 
