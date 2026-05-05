@@ -23,7 +23,7 @@ class MeshLoader:
         "hexahedron": _CT.hexahedron,
         "pyramid": _CT.pyramid,
         "quadrilateral": _CT.quadrilateral,
-        "triangle""triangle": _CT.triangle,
+        "triangle": _CT.triangle,
         "interval": _CT.interval,
         "prism": _CT.prism,
         "point": _CT.point,
@@ -69,7 +69,7 @@ class MeshLoader:
         dim = len(ext)
         # `divsions` can an int, a tuple, a list or a numpy array.
         if isinstance(udiv, int):
-            divs = dim * (x,)
+            divs = dim * (udiv,)
         elif isinstance(udiv, collections.abc.Sequence) or\
              isinstance(udiv, np.ndarray):
             if len(udiv) == dim:
@@ -97,7 +97,7 @@ class MeshLoader:
             m = f.read_mesh()
             try:
                 self.cell_tags = f.read_meshtags(m, "grain-ids")
-            except:
+            except Exception:
                 pass
 
         return m
