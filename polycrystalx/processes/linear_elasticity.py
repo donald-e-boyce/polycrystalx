@@ -1,6 +1,5 @@
 """Elastic Process"""
-import time
-
+import pathlib
 import xml.etree.ElementTree as ET
 
 import numpy as np
@@ -48,8 +47,14 @@ class LinearElasticity:
         self.mpirank = self.loader.mesh.comm.rank
         print("My rank is ", self.mpirank)
 
-    def run(self):
-        """Run the problem"""
+    def run(self, outdir):
+        """Run the problem
+
+        Parameters
+        ----------
+        outdir: pathlib.Path
+            output directory for all result files
+        """
         print("running problem", flush=True)
         print("creating loader", flush=True)
         ldr = self.loader
@@ -89,12 +94,24 @@ class LinearElasticity:
             raise RuntimeError(msg)
 
         print("postprocessing")
-        self.postprocess(uh, ldr)
+        self.postprocess(uh, ldr, outdir)
 
         return uh
 
-    def postprocess(self, uh, ldr):
-        """Compute strains and stresses and write output"""
+    def postprocess(self, uh, ldr, outdir):
+        """Compute strains and stresses and write output
+
+        Parameters
+        ----------
+        uh: dolfinx.fem.Function
+            displacement solution
+        ldr: _Loader
+            loader holding mesh and field data
+        outdir: pathlib.Path
+            output directory for all result files
+        """
+        outdir = pathlib.Path(outdir)
+
         # Write the XDMF File.
 
         uh.name = "displacement"
@@ -120,7 +137,7 @@ class LinearElasticity:
         stress = fem.Function(ldr.T, name="stress")
         stress.interpolate(stress_expr)
 
-        with io.XDMFFile(ldr.mesh.comm, "output.xdmf", "w") as file:
+        with io.XDMFFile(ldr.mesh.comm, str(outdir / "output.xdmf"), "w") as file:
             file.write_mesh(ldr.mesh)
             file.write_meshtags(ldr.cell_tags, ldr.mesh.geometry)
             file.write_function(uh)
@@ -195,12 +212,13 @@ class LinearElasticity:
             eps_avg[nz] = eps_int[nz]/g_volumes[nz].reshape(nnz, 1)
             sig_avg[nz] = sig_int[nz]/g_volumes[nz].reshape(nnz, 1)
             np.savez(
-                "grain-averages.npz", volume=g_volumes, strain=eps_avg, stress=sig_avg
+                outdir / "grain-averages.npz",
+                volume=g_volumes, strain=eps_avg, stress=sig_avg
             )
 
-            self.write_xdmf()
+            self.write_xdmf(outdir)
 
-    def write_xdmf(self, output="output.xdmf", paraview="paraview.xdmf"):
+    def write_xdmf(self, outdir, output="output.xdmf", paraview="paraview.xdmf"):
         """This puts all the data into the same grid
 
         This writes two XDMF files--the usual output file written using the
@@ -209,18 +227,21 @@ class LinearElasticity:
 
         Parameters
         ----------
-        output: str or Path, default = "output.xdmf"
-            name of output XDMF file
-        paraview: str or Path, default = "paraview.xdmf"
-            name of XMDF file for paraview
+        outdir: pathlib.Path
+            directory containing output files
+        output: str, default = "output.xdmf"
+            name of output XDMF file (relative to outdir)
+        paraview: str, default = "paraview.xdmf"
+            name of XDMF file for paraview (relative to outdir)
         """
+        outdir = pathlib.Path(outdir)
 
         ATTR = "Attribute"
         NAME = "Name"
 
         # Start with displacement, which also includes meshtags.
 
-        tree = ET.parse(output)
+        tree = ET.parse(outdir / output)
         root = tree.getroot()
         domain = root[0]
         meshgrid = domain[0]
@@ -256,7 +277,7 @@ class LinearElasticity:
 
         # Write the modified tree.
 
-        tree.write(paraview)
+        tree.write(outdir / paraview)
 
 
 class _Loader:

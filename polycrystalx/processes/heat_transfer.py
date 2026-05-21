@@ -1,4 +1,6 @@
 """Heat Transfer"""
+import pathlib
+
 import numpy as np
 from dolfinx import fem, log, io
 from dolfinx.common import Timer
@@ -30,7 +32,14 @@ class HeatTransfer:
         self.loader = _Loader(job)
         self.mpirank = self.loader.mesh.comm.rank
 
-    def run(self):
+    def run(self, outdir):
+        """Run the problem
+
+        Parameters
+        ----------
+        outdir: pathlib.Path
+            output directory for all result files
+        """
         ldr = self.loader
 
         # Fill in the forms.
@@ -73,10 +82,22 @@ class HeatTransfer:
             msg = f"solver diverged: iterations = {solver.its}"
 
         print("postprocessing ...")
-        self.postprocess(uh, ldr)
+        self.postprocess(uh, ldr, outdir)
 
-    def postprocess(self, uh, ldr):
-        """Write primary variables and compute grain averaged values"""
+    def postprocess(self, uh, ldr, outdir):
+        """Write primary variables and compute grain averaged values
+
+        Parameters
+        ----------
+        uh: dolfinx.fem.Function
+            temperature solution
+        ldr: _Loader
+            loader holding mesh and field data
+        outdir: pathlib.Path
+            output directory for all result files
+        """
+        outdir = pathlib.Path(outdir)
+
         # Compute flux field first.
         flux_form = ldr.problem.flux(uh)
         flux_expr = fem.Expression(
@@ -85,7 +106,7 @@ class HeatTransfer:
         flux_fun = fem.Function(ldr.V3, name="flux")
         flux_fun.interpolate(flux_expr)
 
-        with io.XDMFFile(ldr.mesh.comm, "output.xdmf", "w") as file:
+        with io.XDMFFile(ldr.mesh.comm, str(outdir / "output.xdmf"), "w") as file:
             file.write_mesh(ldr.mesh)
             file.write_meshtags(ldr.cell_tags, ldr.mesh.geometry)
             file.write_function(uh)
@@ -137,7 +158,7 @@ class HeatTransfer:
 
             flux_avg = np.zeros((num_grains, 3))
             flux_avg[nz] = flux_ints[nz] / gvnnz.reshape(nnz, 1)
-            np.savez("grain-averages.npz", volume=g_volumes,
+            np.savez(outdir / "grain-averages.npz", volume=g_volumes,
                      temperature=temp_avg, flux=flux_avg)
 
 
