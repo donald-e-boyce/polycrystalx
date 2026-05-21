@@ -1,6 +1,6 @@
 """Utilities for handling input"""
 import os
-import time
+import pathlib
 
 import numpy as np
 
@@ -12,25 +12,27 @@ from .mpi import MPI, mpi_sync, myrank
 
 
 def setup_output(outdir):
-    """Make output directory if needed
+    """Make output directory if needed and return it as a Path.
 
+    Parameters
+    ----------
     outdir: str or Path
         name of output directory
+
+    Returns
+    -------
+    pathlib.Path
+        resolved output directory path
     """
+    outdir = pathlib.Path(outdir)
     print("output directory: ", outdir)
-    mpi_sync(from_0=False)
+    mpi_sync()
     if not os.path.exists(outdir):
         if myrank == 0:
             log.log(log.LogLevel.INFO, f"creating output directory: {outdir}")
             os.makedirs(outdir)
-            time.sleep(0.1)
         mpi_sync()
-    log.log(log.LogLevel.INFO, f"{myrank}: changing directory to {outdir}")
-
-    try:
-        os.chdir(outdir)
-    except:
-        raise RuntimeError(f"{myrank}: failed to find output directory")
+    return outdir
 
 
 def grain_volumes(comm, gv_form, indicator, grain_cells):
@@ -53,13 +55,13 @@ def grain_volumes(comm, gv_form, indicator, grain_cells):
     vols = np.zeros(ng := len(grain_cells))
     indicator.x.array[:] = 0.
     for g in range(ng):
-        if g > 0:
-            indicator.x.array[gcells] = 0
         gcells = grain_cells[g]
         indicator.x.array[gcells] = 1
 
         value = 0. if len(gcells) == 0 else assemble_scalar(gv_form)
         vols[g] = comm.allreduce(value, op=MPI.SUM)
+
+        indicator.x.array[gcells] = 0
 
     return vols
 
@@ -87,12 +89,12 @@ def grain_integrals(comm, gi_form, indicator, func, grain_cells, f):
     func.x.array[:] = f.x.array
     indicator.x.array[:] = 0.
     for g in range(ng):
-        if g > 0:
-            indicator.x.array[gcells] = 0
         gcells = grain_cells[g]
         indicator.x.array[gcells] = 1
 
         value = 0. if len(gcells) == 0 else assemble_scalar(gi_form)
         integrals[g] = comm.allreduce(value, op=MPI.SUM)
+
+        indicator.x.array[gcells] = 0
 
     return integrals

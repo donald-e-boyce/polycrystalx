@@ -1,6 +1,4 @@
 """This is the module for defining and executing model processes"""
-import os
-
 from .linear_elasticity import LinearElasticity
 from .heat_transfer import HeatTransfer
 
@@ -21,6 +19,6 @@ def run(job):
     job: inputs.job.Job
        the job to run
     """
-    setup_output(job.output_directory)
+    outdir = setup_output(job.output_directory)
     process = process_dict[job.process](job)
-    process.run()
+    process.run(outdir)
