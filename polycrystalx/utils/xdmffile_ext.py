@@ -89,6 +89,6 @@ class XDMFFile_Ext(io.XDMFFile):
         if datatype == "Vector":
             etype += ((shp[1],),)
         elif datatype == "Tensor":
-            etype += (((3, 3),),)
+            etype += ((3, 3),)
 
         return fem.functionspace(msh, etype)
