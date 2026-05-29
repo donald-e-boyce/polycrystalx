@@ -15,11 +15,11 @@ from ..loaders import mesh
 from ..loaders import material
 from ..loaders import polycrystal
 from ..loaders import deformation
-from ..forms.common import sigs_3x3, sigs_thermal, grain_volume, grain_integral
+from ..forms.common import sigs_3x3, sigs_thermal
 from ..forms.linear_elasticity import (
     LinearElasticity as LinearElasticityProblem
 )
-from ..utils import grain_volumes, grain_integrals
+from ..utils import GrainIntegrals
 
 
 default_petsc_options={
@@ -149,55 +149,18 @@ class LinearElasticity:
 
         # Compute grain volumes.
 
-        print("finding grain volumes")
-        with Timer() as t:
-            gv_form, indic = grain_volume(ldr.mesh)
-            g_volumes = grain_volumes(
-                ldr.mesh.comm, gv_form, indic, ldr.grain_cells
-            )
-            elapsed = t.elapsed()
-        if self.mpirank == 0:
-            print(f"total volume: {np.sum(g_volumes)}", flush=True)
-            print(f"time for volume calculation: {elapsed}")
+        print("Evaluating grain volumes and integrals")
+        grain_ints = GrainIntegrals(ldr.mesh, ldr.grain_cells)
+
 
         # Compute grain integrals.
 
-        eps_int = np.zeros((num_grains := len(g_volumes), 6))
-        sig_int = np.zeros((num_grains := len(g_volumes), 6))
-
-        V = fem.functionspace(ldr.mesh, ("DG", 0))
-        gi_form, indicator, func = grain_integral(ldr.mesh, V)
-
-        indmap = ldr.mesh.topology.index_map(ldr.mesh.topology.dim)
-        allcells = np.arange(indmap.size_local).astype(np.int32)
-        eps_fun = fem.Function(V)
-        sig_fun = fem.Function(V)
-
         with Timer() as t:
-            indmap = {
-                0: (0, 0), 1: (1, 1), 2: (2, 2),
-                3: (1, 2), 4: (0, 2), 5: (0, 1)
-            }
-            for i in range(6):
-                j0, j1 = indmap[i]
 
-                eps_expr = fem.Expression(
-                    strain[j0, j1], V.element.interpolation_points()
-                )
-                eps_fun.interpolate(eps_expr, allcells)
-                eps_int[:, i] = grain_integrals(
-                    ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
-                    eps_fun
-                )
-
-                sig_expr = fem.Expression(
-                    stress[j0, j1], V.element.interpolation_points()
-                )
-                sig_fun.interpolate(sig_expr, allcells)
-                sig_int[:, i] = grain_integrals(
-                    ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
-                    sig_fun
-                )
+            one = fem.Constant(default_scalar_type(1.0))
+            g_volumes = grain_ints.grain_integrals(one)
+            eps_int = grain_ints.grain_integrals(strain)
+            sig_int = grain_ints.grain_integrals(stress)
 
             elapsed = t.elapsed()
 

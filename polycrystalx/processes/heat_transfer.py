@@ -15,7 +15,7 @@ from ..loaders import deformation
 
 from ..forms.heat_transfer import HeatTransferProblem
 from ..forms.common import grain_volume, grain_integral
-from ..utils import grain_volumes, grain_integrals
+from ..utils import GrainIntegrals
 
 
 class HeatTransfer:
@@ -112,41 +112,19 @@ class HeatTransfer:
             file.write_function(uh)
             file.write_function(flux_fun)
 
-        # Now compute grain volumes.
-        gv_form, indic = grain_volume(ldr.mesh)
-        g_volumes = grain_volumes(
-            ldr.mesh.comm, gv_form, indic, ldr.grain_cells
-        )
-        num_grains = len(g_volumes)
+        # Next, compute grain integrals, grain volumes and grain-averaged values.
+        print("Evaluating grain volumes and integrals")
+        grain_ints = GrainIntegrals(ldr.mesh, ldr.grain_cells)
 
-        # Next, compute grain integrals and grain-averaged values.
-        indmap = ldr.mesh.topology.index_map(ldr.mesh.topology.dim)
-        allcells = np.arange(indmap.size_local).astype(np.int32)
+        with Timer() as t:
 
-        # Integrate temperatures.
-        gi_form, indicator, func = grain_integral(ldr.mesh, ldr.V)
+            one = fem.Constant(default_scalar_type(1.0))
+            g_volumes = grain_ints.grain_integrals(one)
 
-        temp_ints = grain_integrals(
-            ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells, uh
-        )
+            temp_ints = grain_ints.grain_integrals(strain)
+            flux_ints = grain_ints.grain_integrals(stress)
 
-        # Integrate fluxes.
-        V = fem.functionspace(ldr.mesh, ("DG", 0))
-        gi_form, indicator, func = grain_integral(ldr.mesh, V)
-
-        flux_ints = np.zeros((num_grains, 3))
-        flux_i = fem.Function(V)
-
-        for i in range(3):
-            flux_i_expr = fem.Expression(
-                flux_fun[i], V.element.interpolation_points()
-            )
-            flux_i.interpolate(flux_i_expr, allcells)
-
-            flux_ints[:, i] = grain_integrals(
-                ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
-                flux_i
-            )
+            elapsed = t.elapsed()
 
         if self.mpirank == 0:
             nz = g_volumes > 0.

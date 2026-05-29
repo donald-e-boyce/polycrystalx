@@ -10,6 +10,8 @@ from dolfinx.fem import assemble_scalar
 from .xdmffile_ext import XDMFFile_Ext
 from .mpi import MPI, mpi_sync, myrank
 
+from .grain_integrals import GrainIntegrals
+
 
 def setup_output(outdir):
     """Make output directory if needed and return it as a Path.
@@ -33,68 +35,3 @@ def setup_output(outdir):
             os.makedirs(outdir)
         mpi_sync()
     return outdir
-
-
-def grain_volumes(comm, gv_form, indicator, grain_cells):
-    """Compute grain volumes
-
-    comm: MPI communicator
-       main communicator for this problem
-    gv_form: dolfinx Form
-       form for computing grain volume
-    indicator: dolfinx Function
-        inidcator function for the gv_form
-    grain_cells: dict
-        dictionary giving array of cells for each grain
-
-    Returns
-    -------
-    arary
-       array of grain volumes
-    """
-    vols = np.zeros(ng := len(grain_cells))
-    indicator.x.array[:] = 0.
-    for g in range(ng):
-        gcells = grain_cells[g]
-        indicator.x.array[gcells] = 1
-
-        value = 0. if len(gcells) == 0 else assemble_scalar(gv_form)
-        vols[g] = comm.allreduce(value, op=MPI.SUM)
-
-        indicator.x.array[gcells] = 0
-
-    return vols
-
-
-def grain_integrals(comm, gi_form, indicator, func, grain_cells, f):
-    """Compute grain integrals of scalar function
-
-    comm: MPI communicator
-       main communicator for this problem
-    gi_form: dolfinx Form
-       form for computing grain volume
-    indicator: dolfinx Function
-        inidcator function for the gv_form
-    func: dolfinx Function
-        function to integrate over the grains
-    grain_cells: dict
-        dictionary giving list of cells for each grain
-
-    Returns
-    -------
-    arary
-       array of grain integrals
-    """
-    integrals = np.zeros(ng := len(grain_cells))
-    func.x.array[:] = f.x.array
-    indicator.x.array[:] = 0.
-    for g in range(ng):
-        gcells = grain_cells[g]
-        indicator.x.array[gcells] = 1
-
-        value = 0. if len(gcells) == 0 else assemble_scalar(gi_form)
-        integrals[g] = comm.allreduce(value, op=MPI.SUM)
-
-        indicator.x.array[gcells] = 0
-
-    return integrals
