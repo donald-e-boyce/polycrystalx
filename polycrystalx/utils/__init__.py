@@ -4,11 +4,15 @@ import pathlib
 
 import numpy as np
 
-from dolfinx import log
-from dolfinx.fem import assemble_scalar
+from dolfinx import fem, log
+from ufl import Measure, TestFunction
 
 from .xdmffile_ext import XDMFFile_Ext
 from .mpi import MPI, mpi_sync, myrank
+
+
+SYMMETRIC_INDICES = [(0, 0), (1, 1), (2, 2), (1, 2), (0, 2), (0, 1)]
+SYMMETRIC_ISUBS = [0, 4, 8, 5, 2, 1]
 
 
 def setup_output(outdir):
@@ -35,66 +39,76 @@ def setup_output(outdir):
     return outdir
 
 
-def grain_volumes(comm, gv_form, indicator, grain_cells):
-    """Compute grain volumes
+def grain_integrals(f, grain_cells, comm=MPI.COMM_WORLD, symmetric=True):
+    """Evaluate the grain integrals of a function over a  microstructure
 
-    comm: MPI communicator
-       main communicator for this problem
-    gv_form: dolfinx Form
-       form for computing grain volume
-    indicator: dolfinx Function
-        inidcator function for the gv_form
+    Parameters
+    ----------
+    f: Function
+        the function to integrate; it can have scalar, vector or tensor values
     grain_cells: dict
-        dictionary giving array of cells for each grain
-
-    Returns
-    -------
-    arary
-       array of grain volumes
+        gives array of cell ids on this process for each grain
+    comm: MPI communicator
+        the MPI communicator
+    symmetric: bool
+        if True, and shape is (3, 3), then only integrate the six subfunctions with
+        indices (0, 0), (1, 1), (2, 2), (1, 2), (0, 2), (1, 2)
     """
-    vols = np.zeros(ng := len(grain_cells))
-    indicator.x.array[:] = 0.
+    ng = len(grain_cells)
+    shp = f.ufl_shape
+    # If scalar, the just return the integral. Otherwise, integrate each index.
+    if len(shp) == 0:
+        return _scalar_grain_integrals(f, grain_cells)
+
+    if shp == (3, 3) and symmetric:
+        indices = SYMMETRIC_INDICES
+        isubs = SYMMETRIC_ISUBS
+        integrals = np.zeros((ng, 6))
+    else:
+        indices = list(np.ndindex(shp))
+        isubs = np.arange(len(indices))
+        integrals = np.zeros((ng,) + shp)
+
+    for i, (index, isub) in enumerate(zip(indices, isubs)):
+
+        slc = (slice(None), i) if symmetric else  (slice(None),) + index
+        integrals[slc] = (
+            _scalar_grain_integrals(f.sub(isub), grain_cells)
+            )
+
+    return integrals
+
+
+def _scalar_grain_integrals(f, grain_cells, comm=MPI.COMM_WORLD):
+    """Evaluate the grain integrals of a function over a  microstructure
+
+    Assembles per-cell integrals in a single vectorized pass using a DG(0)
+    test function, then sums by grain.
+
+    Parameters
+    ----------
+    f: Function
+        a scalar-valued function to integrate
+    grain_cells: dict
+        gives array of cell ids on this process for each grain
+    """
+
+    msh = f.function_space.mesh
+    Vdg = fem.functionspace(msh, ("DG", 0))
+    _n_local = Vdg.dofmap.index_map.size_local
+
+    dx = Measure("dx", domain=msh)
+    v = TestFunction(Vdg)
+    _cell_form = fem.form(v * f * dx)
+
+    b = fem.assemble_vector(_cell_form)
+    cell_integrals = b.array[:_n_local]
+
+    ng = len(grain_cells)
+    integrals = np.zeros(ng)
     for g in range(ng):
         gcells = grain_cells[g]
-        indicator.x.array[gcells] = 1
-
-        value = 0. if len(gcells) == 0 else assemble_scalar(gv_form)
-        vols[g] = comm.allreduce(value, op=MPI.SUM)
-
-        indicator.x.array[gcells] = 0
-
-    return vols
-
-
-def grain_integrals(comm, gi_form, indicator, func, grain_cells, f):
-    """Compute grain integrals of scalar function
-
-    comm: MPI communicator
-       main communicator for this problem
-    gi_form: dolfinx Form
-       form for computing grain volume
-    indicator: dolfinx Function
-        inidcator function for the gv_form
-    func: dolfinx Function
-        function to integrate over the grains
-    grain_cells: dict
-        dictionary giving list of cells for each grain
-
-    Returns
-    -------
-    arary
-       array of grain integrals
-    """
-    integrals = np.zeros(ng := len(grain_cells))
-    func.x.array[:] = f.x.array
-    indicator.x.array[:] = 0.
-    for g in range(ng):
-        gcells = grain_cells[g]
-        indicator.x.array[gcells] = 1
-
-        value = 0. if len(gcells) == 0 else assemble_scalar(gi_form)
-        integrals[g] = comm.allreduce(value, op=MPI.SUM)
-
-        indicator.x.array[gcells] = 0
+        local_sum = float(cell_integrals[gcells].sum()) if len(gcells) > 0 else 0.0
+        integrals[g] = comm.allreduce(local_sum, op=MPI.SUM)
 
     return integrals

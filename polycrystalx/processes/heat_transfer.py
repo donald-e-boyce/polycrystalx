@@ -14,8 +14,7 @@ from ..loaders import polycrystal
 from ..loaders import deformation
 
 from ..forms.heat_transfer import HeatTransferProblem
-from ..forms.common import grain_volume, grain_integral
-from ..utils import grain_volumes, grain_integrals
+from ..utils import grain_integrals
 
 
 class HeatTransfer:
@@ -112,51 +111,35 @@ class HeatTransfer:
             file.write_function(uh)
             file.write_function(flux_fun)
 
-        # Now compute grain volumes.
-        gv_form, indic = grain_volume(ldr.mesh)
-        g_volumes = grain_volumes(
-            ldr.mesh.comm, gv_form, indic, ldr.grain_cells
-        )
-        num_grains = len(g_volumes)
-
-        # Next, compute grain integrals and grain-averaged values.
-        indmap = ldr.mesh.topology.index_map(ldr.mesh.topology.dim)
-        allcells = np.arange(indmap.size_local).astype(np.int32)
-
-        # Integrate temperatures.
-        gi_form, indicator, func = grain_integral(ldr.mesh, ldr.V)
-
-        temp_ints = grain_integrals(
-            ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells, uh
-        )
-
-        # Integrate fluxes.
-        V = fem.functionspace(ldr.mesh, ("DG", 0))
-        gi_form, indicator, func = grain_integral(ldr.mesh, V)
-
-        flux_ints = np.zeros((num_grains, 3))
-        flux_i = fem.Function(V)
-
-        for i in range(3):
-            flux_i_expr = fem.Expression(
-                flux_fun[i], V.element.interpolation_points()
-            )
-            flux_i.interpolate(flux_i_expr, allcells)
-
-            flux_ints[:, i] = grain_integrals(
-                ldr.mesh.comm, gi_form, indicator, func, ldr.grain_cells,
-                flux_i
-            )
+        # TO DO: write a XDMF for paraview.
 
         if self.mpirank == 0:
+            print("Evaluating grain volumes and integrals")
+
+        with Timer() as t:
+            V = fem.functionspace(ldr.mesh, ("DG", 0))
+            one = fem.Function(V)
+            one.interpolate(lambda x: np.full_like(x[0], 1.0))
+
+            g_volumes = grain_integrals(one, ldr.grain_cells)
+            temp_ints = grain_integrals(uh, ldr.grain_cells)
+            flux_ints = grain_integrals(flux_fun, ldr.grain_cells)
+
+            elapsed = t.elapsed()
+
+        if self.mpirank == 0:
+            print(f"time for grain integrals calculation: {elapsed}")
+
+            # Now find grain averages from integrals.
             nz = g_volumes > 0.
+            print("nz shape: ", nz.shape, g_volumes)
             nnz = np.count_nonzero(g_volumes > 0)
             gvnnz = g_volumes[nz].reshape(nnz)
 
             temp_avg = np.zeros_like(temp_ints)
             temp_avg[nz] = temp_ints[nz] / gvnnz
 
-            flux_avg = np.zeros((num_grains, 3))
+            flux_avg = np.zeros_like(flux_ints)
             flux_avg[nz] = flux_ints[nz] / gvnnz.reshape(nnz, 1)
             np.savez(outdir / "grain-averages.npz", volume=g_volumes,
                      temperature=temp_avg, flux=flux_avg)
