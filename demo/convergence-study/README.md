@@ -22,8 +22,8 @@ This runs a smaller suite--five meshes for each microstructure, the finest havin
 
 Postprocessing has two steps: fitting and plotting.  For the full suite, run:
 ```
-mpirun -n 8 python run_fits voronoi_10g
-python plot_fits voronoi_10g.h5
+mpirun -n 8 python run_fits.py voronoi_10g.yaml
+python plot_fits.py voronoi_10g.h5
 ```
 The `run_fits` script saves the fit data into the file `voronoi-10g.h5`, based on the name given in the yaml input file. This script will take a bit longer than the solves.  The `plot_fits` script uses the HDF5 output and is very fast.
 
