@@ -1,5 +1,6 @@
 """Heat Transfer"""
 import pathlib
+import xml.etree.ElementTree as ET
 
 import numpy as np
 from dolfinx import fem, log, io
@@ -97,6 +98,9 @@ class HeatTransfer:
         """
         outdir = pathlib.Path(outdir)
 
+        uh.name = "temperature"
+        ldr.cell_tags.name = "grain-ids"
+
         # Compute flux field first.
         flux_form = ldr.problem.flux(uh)
         flux_expr = fem.Expression(
@@ -110,8 +114,6 @@ class HeatTransfer:
             file.write_meshtags(ldr.cell_tags, ldr.mesh.geometry)
             file.write_function(uh)
             file.write_function(flux_fun)
-
-        # TO DO: write a XDMF for paraview.
 
         if self.mpirank == 0:
             print("Evaluating grain volumes and integrals")
@@ -143,6 +145,56 @@ class HeatTransfer:
             flux_avg[nz] = flux_ints[nz] / gvnnz.reshape(nnz, 1)
             np.savez(outdir / "grain-averages.npz", volume=g_volumes,
                      temperature=temp_avg, flux=flux_avg)
+
+            self.write_xdmf(outdir)
+
+    def write_xdmf(self, outdir, output="output.xdmf", paraview="paraview.xdmf"):
+        """This puts all the data into the same grid
+
+        This writes two XDMF files--the usual output file written using the
+        fenicsx writer and a second XDMF written specifically for viewing
+        in paraview.
+
+        Parameters
+        ----------
+        outdir: pathlib.Path
+            directory containing output files
+        output: str, default = "output.xdmf"
+            name of output XDMF file (relative to outdir)
+        paraview: str, default = "paraview.xdmf"
+            name of XDMF file for paraview (relative to outdir)
+        """
+        outdir = pathlib.Path(outdir)
+
+        ATTR = "Attribute"
+        NAME = "Name"
+
+        # Start with the mesh tags, which also includes the mesh.
+
+        tree = ET.parse(outdir / output)
+        root = tree.getroot()
+        domain = root[0]
+        meshgrid = domain[0]
+
+        mtags = domain[1].find(ATTR)
+        mtags.attrib[NAME] = "grain-ids"
+        meshgrid.append(mtags)
+
+        temperature = domain[2][0].find(ATTR)
+        temperature.attrib[NAME] = "temperature"
+        meshgrid.append(temperature)
+
+        flux = domain[3][0].find(ATTR)
+        flux.attrib[NAME] = "flux"
+        meshgrid.append(flux)
+
+        domain.remove(domain[3])
+        domain.remove(domain[2])
+        domain.remove(domain[1])
+
+        # Write the modified tree.
+
+        tree.write(outdir / paraview)
 
 
 class _Loader:
