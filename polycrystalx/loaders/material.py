@@ -29,6 +29,9 @@ class LinearElasticity:
     """
     def __init__(self, userinput):
         self.materials = userinput.materials
+        # Ensure all materials use the MANDEL matrix system.
+        for m in self.materials:
+            m.system = "MANDEL"
 
 
 class HeatTransfer(MaterialList):
