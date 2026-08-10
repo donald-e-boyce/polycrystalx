@@ -19,7 +19,7 @@ from ..forms.common import sigs_3x3, sigs_thermal
 from ..forms.linear_elasticity import (
     LinearElasticity as LinearElasticityProblem
 )
-from ..utils import GrainIntegrals
+from ..utils import grain_integrals
 
 
 default_petsc_options={
@@ -147,20 +147,20 @@ class LinearElasticity:
                 texp.name = "thermal_expansion"
                 file.write_function(texp)
 
-        # Compute grain volumes.
+        # Compute grain volumes and integrals.
 
-        print("Evaluating grain volumes and integrals")
-        grain_ints = GrainIntegrals(ldr.mesh, ldr.grain_cells)
-
-
-        # Compute grain integrals.
+        if self.mpirank == 0:
+            print("Evaluating grain volumes and integrals")
 
         with Timer() as t:
+            V = fem.functionspace(ldr.mesh, ("DG", 0))
+            one = fem.Function(V)
+            one.interpolate(lambda x: np.full_like(x[0], 1.0))
 
-            one = fem.Constant(default_scalar_type(1.0))
-            g_volumes = grain_ints.grain_integrals(one)
-            eps_int = grain_ints.grain_integrals(strain)
-            sig_int = grain_ints.grain_integrals(stress)
+            g_volumes = grain_integrals(one, ldr.grain_cells)
+            uh_int = grain_integrals(uh, ldr.grain_cells)
+            eps_int = grain_integrals(strain, ldr.grain_cells)
+            sig_int = grain_integrals(stress, ldr.grain_cells)
 
             elapsed = t.elapsed()
 

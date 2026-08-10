@@ -1,5 +1,6 @@
 """Heat Transfer"""
 import pathlib
+import xml.etree.ElementTree as ET
 
 import numpy as np
 from dolfinx import fem, log, io
@@ -14,8 +15,7 @@ from ..loaders import polycrystal
 from ..loaders import deformation
 
 from ..forms.heat_transfer import HeatTransferProblem
-from ..forms.common import grain_volume, grain_integral
-from ..utils import GrainIntegrals
+from ..utils import grain_integrals
 
 
 class HeatTransfer:
@@ -98,6 +98,9 @@ class HeatTransfer:
         """
         outdir = pathlib.Path(outdir)
 
+        uh.name = "temperature"
+        ldr.cell_tags.name = "grain-ids"
+
         # Compute flux field first.
         flux_form = ldr.problem.flux(uh)
         flux_expr = fem.Expression(
@@ -112,32 +115,86 @@ class HeatTransfer:
             file.write_function(uh)
             file.write_function(flux_fun)
 
-        # Next, compute grain integrals, grain volumes and grain-averaged values.
-        print("Evaluating grain volumes and integrals")
-        grain_ints = GrainIntegrals(ldr.mesh, ldr.grain_cells)
+        if self.mpirank == 0:
+            print("Evaluating grain volumes and integrals")
 
         with Timer() as t:
+            V = fem.functionspace(ldr.mesh, ("DG", 0))
+            one = fem.Function(V)
+            one.interpolate(lambda x: np.full_like(x[0], 1.0))
 
-            one = fem.Constant(default_scalar_type(1.0))
-            g_volumes = grain_ints.grain_integrals(one)
-
-            temp_ints = grain_ints.grain_integrals(strain)
-            flux_ints = grain_ints.grain_integrals(stress)
+            g_volumes = grain_integrals(one, ldr.grain_cells)
+            temp_ints = grain_integrals(uh, ldr.grain_cells)
+            flux_ints = grain_integrals(flux_fun, ldr.grain_cells)
 
             elapsed = t.elapsed()
 
         if self.mpirank == 0:
+            print(f"time for grain integrals calculation: {elapsed}")
+
+            # Now find grain averages from integrals.
             nz = g_volumes > 0.
+            print("nz shape: ", nz.shape, g_volumes)
             nnz = np.count_nonzero(g_volumes > 0)
             gvnnz = g_volumes[nz].reshape(nnz)
 
             temp_avg = np.zeros_like(temp_ints)
             temp_avg[nz] = temp_ints[nz] / gvnnz
 
-            flux_avg = np.zeros((num_grains, 3))
+            flux_avg = np.zeros_like(flux_ints)
             flux_avg[nz] = flux_ints[nz] / gvnnz.reshape(nnz, 1)
             np.savez(outdir / "grain-averages.npz", volume=g_volumes,
                      temperature=temp_avg, flux=flux_avg)
+
+            self.write_xdmf(outdir)
+
+    def write_xdmf(self, outdir, output="output.xdmf", paraview="paraview.xdmf"):
+        """This puts all the data into the same grid
+
+        This writes two XDMF files--the usual output file written using the
+        fenicsx writer and a second XDMF written specifically for viewing
+        in paraview.
+
+        Parameters
+        ----------
+        outdir: pathlib.Path
+            directory containing output files
+        output: str, default = "output.xdmf"
+            name of output XDMF file (relative to outdir)
+        paraview: str, default = "paraview.xdmf"
+            name of XDMF file for paraview (relative to outdir)
+        """
+        outdir = pathlib.Path(outdir)
+
+        ATTR = "Attribute"
+        NAME = "Name"
+
+        # Start with the mesh tags, which also includes the mesh.
+
+        tree = ET.parse(outdir / output)
+        root = tree.getroot()
+        domain = root[0]
+        meshgrid = domain[0]
+
+        mtags = domain[1].find(ATTR)
+        mtags.attrib[NAME] = "grain-ids"
+        meshgrid.append(mtags)
+
+        temperature = domain[2][0].find(ATTR)
+        temperature.attrib[NAME] = "temperature"
+        meshgrid.append(temperature)
+
+        flux = domain[3][0].find(ATTR)
+        flux.attrib[NAME] = "flux"
+        meshgrid.append(flux)
+
+        domain.remove(domain[3])
+        domain.remove(domain[2])
+        domain.remove(domain[1])
+
+        # Write the modified tree.
+
+        tree.write(outdir / paraview)
 
 
 class _Loader:

@@ -1,0 +1,9 @@
+# Input for Postprocessing suites.
+
+name: voronoi-10g-small
+suites:
+  - voronoi_10g_1_small
+  - voronoi_10g_2_small
+  - voronoi_10g_3_small
+  - voronoi_10g_4_small
+  - voronoi_10g_5_small
