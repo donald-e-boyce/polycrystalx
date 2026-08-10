@@ -15,7 +15,7 @@ from ..loaders import mesh
 from ..loaders import material
 from ..loaders import polycrystal
 from ..loaders import deformation
-from ..forms.common import sigs_3x3, sigs_thermal, grain_volume, grain_integral
+from ..forms.common import sigs_3x3, sigs_thermal
 from ..forms.linear_elasticity import (
     LinearElasticity as LinearElasticityProblem
 )

@@ -10,6 +10,8 @@ from ufl import Measure, TestFunction
 from .xdmffile_ext import XDMFFile_Ext
 from .mpi import MPI, mpi_sync, myrank
 
+from .grain_integrals import GrainIntegrals
+
 
 SYMMETRIC_INDICES = [(0, 0), (1, 1), (2, 2), (1, 2), (0, 2), (0, 1)]
 SYMMETRIC_ISUBS = [0, 4, 8, 5, 2, 1]
