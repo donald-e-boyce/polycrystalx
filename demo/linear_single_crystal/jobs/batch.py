@@ -3,13 +3,12 @@ import itertools
 
 from polycrystalx import inputs
 
-from .job_data import (
+from .job_inputs import (
     get_material_input,
     get_polycrystal_input,
     get_mesh_input,
     get_deformation_input,
 )
-
 
 suite = "linear-single-crystal"
 process = "linear-elasticity"
