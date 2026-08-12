@@ -2,12 +2,11 @@
 
 from polycrystalx import inputs
 
-from .jobdata import (
+from .job_inputs import (
     get_material_input,
-    get_polycrystal_input,
+    get_microstructure_input,
     get_mesh_input,
     get_deformation_input,
-    matl_dict
 )
 
 suite = "thermal_expansion"
@@ -19,8 +18,8 @@ def get_job(key):
     matl, mesh, poly, defm = key
     matl_input = get_material_input(matl)
     mesh_input = get_mesh_input(mesh)
-    poly_input = get_polycrystal_input(poly)
-    defm_input = get_deformation_input(defm, matl)
+    poly_input = get_microstructure_input(poly)
+    defm_input = get_deformation_input(defm, matl_input)
 
     return inputs.job.Job(
         suite = suite,
