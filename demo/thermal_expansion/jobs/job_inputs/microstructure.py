@@ -19,6 +19,7 @@ class PolycrystalInput:
     Parameters:
     ----------
     key: hashable
+       not used because it is an isotropic single grain (so far)
 
     """
 
