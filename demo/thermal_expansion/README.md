@@ -15,7 +15,7 @@ The first two examples show that. They both use the simple material with identit
 
 2. The second example, `match`, has displacement boundary conditions exactly matching the thermal strain field. It results in zero stress and the mechanical strain field is identical to the thermal strain.
 
-3. The third example, `linear`, illustrates a typical application. It uses stiffness values for a real material, and the temperature difference varies linearly.
+3. The third example, `linear`, illustrates a typical application. It uses stiffness values for a real material, and the temperature difference varies linearly.  Again, we use zero displacements and see in the plots below that the stress varies like the negative of the thermal stress.
 
 ![stress vs thermal strain](./stress-strain.png)
 ## Inputs
@@ -25,7 +25,7 @@ As usual in `polycrystalx`, there are four inputs, and each is specified by a `k
 There is a material database with two linear elastic materials. The `key` is the name of the material in the database. The two names are `identity-iso` and `ti-64-bar-RT`. The first is simple material with stiffness the identity matrix.  The second is isotropic and comes from matweb ([[Ti64](https://www.matweb.com/search/DataSheet.aspx?MatGUID=10d463eb3d3d4ff48fc57e0ad1037434)).
 
 ### Microstructure
-For this demo, the materials are isotropic, so there is no variation in the microstructure (single grain). So the key is not used, and the name `sx` (for single crystal) is used.
+For this demo, the materials are isotropic, so there is no variation in the microstructure (single grain). So the key is not used, and the name component `sx` (for single crystal) is used for output files.
 
 ### Mesh
 The mesh is a simple box mesh on the unit cube.  The `key` is a 3-tuple of subdivisions, e.g. `(50, 50, 50)` for regular subdivisions, fifty in each direction.
