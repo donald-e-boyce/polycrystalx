@@ -1,6 +1,13 @@
 """This is the module for defining and executing model processes"""
+import os
+import pathlib
+
+from dolfinx import log
+
 from .linear_elasticity import LinearElasticity
 from .heat_transfer import HeatTransfer
+
+from ..utils.mpi import mpi_sync, myrank
 
 
 processes = (LinearElasticity, HeatTransfer)

@@ -17,7 +17,6 @@ EvalPoints
     class for pointwise evaluation of functions
 """
 import os
-import pathlib
 
 import numpy as np
 
