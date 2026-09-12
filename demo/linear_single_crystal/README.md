@@ -30,7 +30,7 @@ See the file `linear_single_crystal/jobs/job_inputs/deformation.py`.
 ### Running
 
 #### Single Job
-To run a single job, run from the `linear_single_crystal` directory. Set the job keys in the `jobs/__init__.py` file and use the `pxx_job` command.  Here is an example `__init__.py` file. It uses a simple cubic material, aa single crystal rotated 45 degrees about the z-axis, a very coarse mesh (5 x 6 x 7), and yz-shear with purely displacement boundary conditions.
+To run a single job, run from the `linear_single_crystal` directory. Set the job keys in the `jobs/__init__.py` file and use the `pxx_run` command.  Here is an example `__init__.py` file. It uses a simple cubic material, a single crystal rotated 45 degrees about the z-axis, a very coarse mesh (5 x 6 x 7), and yz-shear with purely displacement boundary conditions.
 ```"""Inputs Module"""
 from . import batch
 
@@ -43,10 +43,10 @@ jobkey = (matl_key, poly_key, mesh_key, defm_key)
 job = batch.get_job(jobkey)
 ```
 To run it with two processes, use the command:
-```mpirun -n 2 pxx_job jobs```
+```pxx_run -n 2 jobs```
 
 #### Batch Job
-To run a batch job, use the `pxx_suite` command on a job iterator, which are intended to be set in the `batch.py` file. In the demo batch file, we have four job suites defined:
+To run a batch job, use the `pxx_run` command with the `-s` (`--suite`) option on a job iterator, which are intended to be set in the `batch.py` file. In the demo batch file, we have four job suites defined:
 
 **all_A**
 : This suite iterates on all nine possible deformation matrices `A` for a fixed cubic material, a fixed crystal orientation and a fixed mesh with 30 subdivisions in each direction, and full displacement boundary conditions.
@@ -62,5 +62,5 @@ To run a batch job, use the `pxx_suite` command on a job iterator, which are int
 
 To run the `vary_bcs` suite, use:
 ```
-pxx_suite -n 2 -k vary_bcs jobs.batch
+pxx_run -n 2 -s jobs.batch vary_bcs
 ```

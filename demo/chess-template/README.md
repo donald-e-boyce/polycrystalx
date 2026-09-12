@@ -6,15 +6,16 @@ The `jobs` directory is a python package where you define and assemble the input
 
 ## Running
 
-To run a single simulation, use the `pxx_job` command with `mpirun`. This looks in the specified module (`jobs.batch`, in example below) for a `job` attribute, which contains a list of job keys, and uses that as the simulation input.
+To run simulations, use the `pxx_run` command.
+
+To run a single simulation, use `pxx_run`. By default, this looks in the specified module (`jobs.batch`, in example below) for a `job` attribute and uses that as the simulation input:
 ```
-mpirun -n 2 pxx_job jobs.batch
+pxx_run -n 2 jobs.batch
 ```
 
-To run a suite of simulations, use the `pxx_suite` command. It also takes the name of a module, and it will look, by default, for a `job_keys`  atrribute, which defines an iterator over lists of job keys. You can also specify a job suite by name as well.
-
+To run a suite of simulations, use `pxx_run` with the `-s` (`--suite`) option. By default, it will look for a `job_keys` attribute, which defines an iterator over lists of job keys. You can also specify an attribute name as an optional positional argument:
 ```
-pxx_suite -n 2 jobs.batch
+pxx_run -n 2 -s jobs.batch
 ```
 
 Here is the `jobs.batch` file for this example.

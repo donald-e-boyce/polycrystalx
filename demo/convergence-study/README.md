@@ -8,13 +8,13 @@ To run this demo you will need a fenicsx environment with the `polycrystal` (mat
 ### Solving
 From the `convergence_study` directory, run the command:
 ```
-pxx_suite -n 8 -k voronoi_10g jobs.batch
+pxx_run -n 8 -s jobs.batch voronoi_10g
 ```
 This will run fifty simulations--ten meshes for each microstructure, the finest mesh having 48,000,000 tetrahedral elements.
 
 You can also run a smaller version:
 ```
-pxx_suite -n 8 -k voronoi_10g_small jobs.batch
+pxx_run -n 8 -s jobs.batch voronoi_10g_small
 ```
 This runs a smaller suite--five meshes for each microstructure, the finest having 6,000,000 elements.
 
@@ -79,7 +79,7 @@ The only key used in this demo is `temp-z-hs`, which refers to a steady heat tra
 ### Running
 
 **Single Job**.
-To run a single job use the `pxx_job` command with `mpirun`.  It looks for the `job` attribute in the `jobs` module (`__init__.py`).  This is built from four input keys.  Here is the `__init__.py` file:
+To run a single job use the `pxx_run` command. By default, it looks for the `job` attribute in the `jobs` module (`__init__.py`).  This is built from four input keys.  Here is the `__init__.py` file:
 ```
 """Inputs Module"""
 from . import batch
@@ -101,7 +101,7 @@ job = batch.get_job(jobkey)
 ```
 You run the job like this:
 ```
-mpirun -n 2 pxx_job jobs
+pxx_run -n 2 jobs
 ```
 The output will be written to a file based on the the name of the job suite, `convergence-study`), the material process (`heat-transfer`), and the input keys.  Note that the job suite name and the material process are set in the `job_inputs` module and apply to all jobs run here. In this case, the files will be written to: `Outputs/convergence-study/heat-transfer/ort-235-50-50-50-voronoi-10g-5-temp-z-hs`.
 
@@ -117,7 +117,7 @@ voronoi_10g_1= itertools.product(
     ["temp-z-hs"]
 )
 ```
-This generates 10 job keys, one for each mesh. You run it using `pxx_suite` with arguments being the number of processes, the name of the suite, and the module containing the named suite.
+This generates 10 job keys, one for each mesh. You run it using `pxx_run` with the `-s` (`--suite`) option, specifying the number of processes, the module containing the named suite, and the attribute name of the suite:
 ```
-pxx_suite -n 8 -k voronoi_10g_1 jobs.batch
+pxx_run -n 8 -s jobs.batch voronoi_10g_1
 ```
